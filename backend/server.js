@@ -2,40 +2,52 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
 
 const app = express();
 const PORT = 3000;
-const DB_SOURCE = "portal.db";
+const DB_SOURCE = path.join(__dirname, "portal.db");
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
 // --- Database Initialization ---
-const db = new sqlite3.Database(DB_SOURCE, (err) => {
+const db = new sqlite3.Database(DB_SOURCE, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
     if (err) {
-        console.error(err.message);
+        console.error('Error opening database:', err.message);
         throw err;
     } else {
         console.log('Connected to the SQLite database.');
+        console.log('Database location:', DB_SOURCE);
         
         // Create Users Table
         db.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            email TEXT UNIQUE,
-            password TEXT
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
         )`, (err) => {
-            if (err) return console.error(err);
+            if (err) {
+                console.error('Error creating users table:', err);
+                return;
+            }
+            console.log('Users table ready.');
             
             // Check if users exist, if not seed them
             db.get("SELECT count(*) as count FROM users", (err, row) => {
-                if (row.count === 0) {
+                if (err) {
+                    console.error('Error checking users:', err);
+                    return;
+                }
+                if (row && row.count === 0) {
                     const insert = 'INSERT INTO users (name, email, password) VALUES (?,?,?)';
                     db.run(insert, ["Alice Writer", "alice@example.com", "password123"]);
                     db.run(insert, ["Bob Commenter", "bob@example.com", "password123"]);
                     db.run(insert, ["Charlie Editor", "charlie@example.com", "password123"]);
-                    console.log("Seeded Users table.");
+                    console.log("Seeded Users table with 3 default users.");
+                } else {
+                    console.log(`Users table already has ${row.count} users.`);
                 }
             });
         });
@@ -44,27 +56,43 @@ const db = new sqlite3.Database(DB_SOURCE, (err) => {
         // We store 'comments' as a TEXT field containing a JSON string to keep the nested structure required.
         db.run(`CREATE TABLE IF NOT EXISTS news (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            body TEXT,
-            author_id INTEGER,
-            comments TEXT
+            title TEXT NOT NULL,
+            body TEXT NOT NULL,
+            author_id INTEGER NOT NULL,
+            comments TEXT DEFAULT '[]',
+            FOREIGN KEY (author_id) REFERENCES users(id)
         )`, (err) => {
-            if (err) return console.error(err);
+            if (err) {
+                console.error('Error creating news table:', err);
+                return;
+            }
+            console.log('News table ready.');
 
             // Check if news exist, if not seed them
             db.get("SELECT count(*) as count FROM news", (err, row) => {
-                if (row.count === 0) {
+                if (err) {
+                    console.error('Error checking news:', err);
+                    return;
+                }
+                if (row && row.count === 0) {
                     const insert = 'INSERT INTO news (title, body, author_id, comments) VALUES (?,?,?,?)';
                     const initialComments = JSON.stringify([
                         { id: 1, text: "Great first post!", user_id: 2, timestamp: new Date().toISOString() }
                     ]);
                     db.run(insert, [
                         "Welcome to the News Portal", 
-                        "This is the very first post on our new portal. It contains more than twenty characters.", 
+                        "This is the very first post on our new portal. It contains more than twenty characters and provides a great introduction to what you can expect from this platform.", 
                         1, 
                         initialComments
-                    ]);
-                    console.log("Seeded News table.");
+                    ], (err) => {
+                        if (err) {
+                            console.error('Error seeding news:', err);
+                        } else {
+                            console.log("Seeded News table with initial article.");
+                        }
+                    });
+                } else {
+                    console.log(`News table already has ${row.count} articles.`);
                 }
             });
         });
@@ -100,7 +128,7 @@ app.get('/users/:id', (req, res) => {
     });
 });
 
-// POST /users (Create user)
+// POST /users (Create user - signup)
 app.post('/users', (req, res) => {
     const { name, email, password } = req.body;
     if (!name || !email || !password) {
@@ -110,12 +138,18 @@ app.post('/users', (req, res) => {
     const params = [name, email, password];
     db.run(sql, params, function (err) {
         if (err) {
+            if (err.message.includes('UNIQUE constraint failed')) {
+                return res.status(400).json({ error: "Email already exists." });
+            }
             return res.status(400).json({ error: err.message });
         }
         res.status(201).json({
-            id: this.lastID,
-            name,
-            email,
+            user: {
+                id: this.lastID,
+                name,
+                email,
+            },
+            message: "User created successfully"
         });
     });
 });
@@ -128,8 +162,11 @@ app.post('/login', (req, res) => {
     }
     db.get("SELECT id, name, email FROM users WHERE email = ? AND password = ?", [email, password], (err, row) => {
         if (err) return res.status(400).json({ error: err.message });
-        if (row) res.json(row);
-        else res.status(401).json({ error: "Invalid email or password" });
+        if (row) {
+            res.json({ user: row, message: "Login successful" });
+        } else {
+            res.status(401).json({ error: "Invalid email or password" });
+        }
     });
 });
 
@@ -265,7 +302,7 @@ app.delete('/news/:id', (req, res) => {
         }
 
         db.run("DELETE FROM news WHERE id = ?", [newsId], (err) => {
-            if (err) return res.status(400).json({ error:.message });
+            if (err) return res.status(400).json({ error: err.message });
             res.status(200).json({ message: "Deleted successfully" });
         });
     });
@@ -273,6 +310,29 @@ app.delete('/news/:id', (req, res) => {
 
 // --- Start Server ---
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Resources: http://localhost:${PORT}/users, http://localhost:${PORT}/news`);
+    console.log('========================================');
+    console.log(`✅ Server running on http://localhost:${PORT}`);
+    console.log(`📚 API Resources:`);
+    console.log(`   - Users: http://localhost:${PORT}/users`);
+    console.log(`   - News:  http://localhost:${PORT}/news`);
+    console.log(`   - Login: POST http://localhost:${PORT}/login`);
+    console.log('========================================');
+});
+
+// Handle server errors
+app.on('error', (error) => {
+    console.error('Server error:', error);
+});
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('\nShutting down gracefully...');
+    db.close((err) => {
+        if (err) {
+            console.error('Error closing database:', err);
+        } else {
+            console.log('Database connection closed.');
+        }
+        process.exit(0);
+    });
 });

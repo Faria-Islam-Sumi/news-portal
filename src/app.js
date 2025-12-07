@@ -2,12 +2,34 @@ const API_URL = "http://localhost:3000";
 
 // --- Authentication Helpers ---
 
-function login(user) {
+function saveUser(user) {
     localStorage.setItem("user", JSON.stringify(user));
+    // Dispatch event to notify app about user change
+    window.dispatchEvent(new Event('user-updated'));
+}
+
+async function login(email, password) {
+    const response = await fetch(`${API_URL}/login`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ email, password })
+    });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Login failed");
+    }
+
+    const data = await response.json();
+    saveUser(data.user);
+    return data.user;
 }
 
 function logout() {
     localStorage.removeItem("user");
+    window.dispatchEvent(new Event('user-updated'));
 }
 
 function getCurrentUser() {
@@ -16,11 +38,21 @@ function getCurrentUser() {
 }
 
 async function signup(name, email, password) {
-    const response = await apiFetch("/users", {
+    const response = await fetch(`${API_URL}/users`, {
         method: "POST",
-        body: JSON.stringify({ name, email, password }),
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ name, email, password })
     });
-    login(response);
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Signup failed");
+    }
+
+    const data = await response.json();
+    return data.user;
 }
 
 // --- API Fetch Wrapper (Auto-adds Headers) ---
@@ -44,8 +76,8 @@ async function apiFetch(endpoint, options = {}) {
     });
 
     if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+        const error = await response.json();
+        throw new Error(error.error || "Request failed");
     }
 
     return response.json();

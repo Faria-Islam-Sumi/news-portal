@@ -1,6 +1,7 @@
 
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import './style.css'
 
 import App from './App.vue'
 import NewsFeed from './components/NewsFeed.vue'
@@ -10,8 +11,8 @@ import NewsEdit from './components/NewsEdit.vue'
 import Login from './components/Login.vue'
 
 const routes = [
-  { path: '/', component: NewsFeed, meta: { requiresAuth: true } },
-  { path: '/news/:id', component: NewsDetail, meta: { requiresAuth: true } },
+  { path: '/', component: NewsFeed },
+  { path: '/news/:id', component: NewsDetail },
   { path: '/create', component: NewsCreate, meta: { requiresAuth: true } },
   { path: '/edit/:id', component: NewsEdit, meta: { requiresAuth: true } },
   { path: '/login', component: Login }
