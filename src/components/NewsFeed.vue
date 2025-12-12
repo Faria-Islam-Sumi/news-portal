@@ -18,6 +18,39 @@
       </router-link>
     </div>
 
+    <!-- Search Bar -->
+    <div class="relative">
+      <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+        <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      </div>
+      <input
+        type="text"
+        v-model="searchQuery"
+        @input="debouncedSearch"
+        placeholder="Search news by title..."
+        class="w-full pl-12 pr-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+      />
+      <button
+        v-if="searchQuery"
+        @click="clearSearch"
+        class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-white"
+      >
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- Results Info -->
+    <div v-if="!loading && pagination.totalItems > 0" class="text-gray-400 text-sm">
+      Showing {{ (pagination.currentPage - 1) * pagination.itemsPerPage + 1 }} - 
+      {{ Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems) }} 
+      of {{ pagination.totalItems }} articles
+      <span v-if="searchQuery"> matching "{{ searchQuery }}"</span>
+    </div>
+
     <!-- Loading State -->
     <div v-if="loading" class="flex justify-center items-center py-20">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
@@ -28,8 +61,19 @@
       <svg class="mx-auto h-16 w-16 text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
       </svg>
-      <h3 class="text-xl font-semibold text-gray-300 mb-2">No News Yet</h3>
-      <p class="text-gray-500">Be the first to create a news article!</p>
+      <h3 class="text-xl font-semibold text-gray-300 mb-2">
+        {{ searchQuery ? 'No Results Found' : 'No News Yet' }}
+      </h3>
+      <p class="text-gray-500">
+        {{ searchQuery ? 'Try a different search term' : 'Be the first to create a news article!' }}
+      </p>
+      <button
+        v-if="searchQuery"
+        @click="clearSearch"
+        class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+      >
+        Clear Search
+      </button>
     </div>
 
     <!-- News Grid -->
@@ -53,13 +97,14 @@
           <!-- Body Preview -->
           <p class="text-gray-300 mb-4 line-clamp-3">{{ item.body }}</p>
 
-          <!-- Stats -->
+          <!-- Stats - Comment Count -->
           <div class="flex items-center space-x-4 text-sm text-gray-500 mb-4">
-            <span class="flex items-center">
-              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <span class="flex items-center bg-gray-700/50 px-3 py-1 rounded-full">
+              <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
-              {{ item.comments ? item.comments.length : 0 }} comments
+              <span class="text-gray-300 font-medium">{{ item.commentCount || 0 }}</span>
+              <span class="ml-1">{{ item.commentCount === 1 ? 'comment' : 'comments' }}</span>
             </span>
           </div>
 
@@ -87,6 +132,81 @@
             </button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div v-if="!loading && pagination.totalPages > 1" class="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
+      <div class="flex items-center gap-2">
+        <!-- First Page -->
+        <button
+          @click="goToPage(1)"
+          :disabled="!pagination.hasPrevPage"
+          class="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="First page"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+        
+        <!-- Previous Page -->
+        <button
+          @click="goToPage(pagination.currentPage - 1)"
+          :disabled="!pagination.hasPrevPage"
+          class="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Previous page"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+
+        <!-- Page Numbers -->
+        <div class="flex items-center gap-1">
+          <button
+            v-for="page in visiblePages"
+            :key="page"
+            @click="goToPage(page)"
+            :class="[
+              'px-4 py-2 rounded-lg font-medium transition-colors',
+              page === pagination.currentPage
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-800 border border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'
+            ]"
+          >
+            {{ page }}
+          </button>
+        </div>
+
+        <!-- Next Page -->
+        <button
+          @click="goToPage(pagination.currentPage + 1)"
+          :disabled="!pagination.hasNextPage"
+          class="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Next page"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        <!-- Last Page -->
+        <button
+          @click="goToPage(pagination.totalPages)"
+          :disabled="!pagination.hasNextPage"
+          class="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          title="Last page"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Page Info -->
+      <div class="text-gray-500 text-sm">
+        Page {{ pagination.currentPage }} of {{ pagination.totalPages }}
       </div>
     </div>
 
@@ -125,8 +245,38 @@ export default {
       user: null,
       loading: true,
       showDeleteModal: false,
-      deleteId: null
+      deleteId: null,
+      searchQuery: '',
+      searchTimeout: null,
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        totalItems: 0,
+        itemsPerPage: 9,
+        hasNextPage: false,
+        hasPrevPage: false
+      }
     };
+  },
+  computed: {
+    visiblePages() {
+      const pages = [];
+      const total = this.pagination.totalPages;
+      const current = this.pagination.currentPage;
+      
+      let start = Math.max(1, current - 2);
+      let end = Math.min(total, start + 4);
+      
+      if (end - start < 4) {
+        start = Math.max(1, end - 4);
+      }
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+      
+      return pages;
+    }
   },
   async created() {
     this.user = getCurrentUser();
@@ -136,16 +286,46 @@ export default {
     async loadData() {
       this.loading = true;
       try {
-        const [newsItems, usersData] = await Promise.all([
-          apiFetch('/news'),
+        const params = new URLSearchParams({
+          page: this.pagination.currentPage,
+          limit: this.pagination.itemsPerPage
+        });
+        
+        if (this.searchQuery.trim()) {
+          params.append('search', this.searchQuery.trim());
+        }
+
+        const [newsResponse, usersData] = await Promise.all([
+          apiFetch(`/news?${params.toString()}`),
           apiFetch('/users')
         ]);
-        this.news = newsItems;
+        
+        this.news = newsResponse.data;
+        this.pagination = newsResponse.pagination;
         this.users = usersData;
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
         this.loading = false;
+      }
+    },
+    debouncedSearch() {
+      clearTimeout(this.searchTimeout);
+      this.searchTimeout = setTimeout(() => {
+        this.pagination.currentPage = 1;
+        this.loadData();
+      }, 300);
+    },
+    clearSearch() {
+      this.searchQuery = '';
+      this.pagination.currentPage = 1;
+      this.loadData();
+    },
+    goToPage(page) {
+      if (page >= 1 && page <= this.pagination.totalPages) {
+        this.pagination.currentPage = page;
+        this.loadData();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     },
     getAuthorName(authorId) {

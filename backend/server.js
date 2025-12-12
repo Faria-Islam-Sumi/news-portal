@@ -171,13 +171,60 @@ app.post('/login', (req, res) => {
 });
 
 
-// 3. GET /news (List all news)
+// 3. GET /news (List all news with search and pagination)
 app.get('/news', (req, res) => {
-    db.all("SELECT * FROM news", [], (err, rows) => {
+    const { search, page = 1, limit = 9 } = req.query;
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 9;
+    const offset = (pageNum - 1) * limitNum;
+
+    let countQuery = "SELECT COUNT(*) as total FROM news";
+    let dataQuery = "SELECT * FROM news";
+    let params = [];
+
+    // Add search filter if provided
+    if (search && search.trim() !== '') {
+        const searchTerm = `%${search.trim()}%`;
+        countQuery += " WHERE title LIKE ?";
+        dataQuery += " WHERE title LIKE ?";
+        params.push(searchTerm);
+    }
+
+    // Add ordering and pagination
+    dataQuery += " ORDER BY id DESC LIMIT ? OFFSET ?";
+
+    // First get total count for pagination
+    db.get(countQuery, params, (err, countResult) => {
         if (err) return res.status(400).json({ error: err.message });
-        // Parse the comments string into JSON for every row
-        const newsList = rows.map(parseNewsItem);
-        res.json(newsList);
+
+        const total = countResult.total;
+        const totalPages = Math.ceil(total / limitNum);
+
+        // Then get paginated data
+        db.all(dataQuery, [...params, limitNum, offset], (err, rows) => {
+            if (err) return res.status(400).json({ error: err.message });
+            
+            // Parse the comments string into JSON for every row and add comment count
+            const newsList = rows.map(item => {
+                const parsed = parseNewsItem(item);
+                return {
+                    ...parsed,
+                    commentCount: parsed.comments ? parsed.comments.length : 0
+                };
+            });
+
+            res.json({
+                data: newsList,
+                pagination: {
+                    currentPage: pageNum,
+                    totalPages: totalPages,
+                    totalItems: total,
+                    itemsPerPage: limitNum,
+                    hasNextPage: pageNum < totalPages,
+                    hasPrevPage: pageNum > 1
+                }
+            });
+        });
     });
 });
 
