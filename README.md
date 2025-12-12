@@ -161,15 +161,3 @@ Update the `API_URL` in `src/app.js` if deploying to production.
 **Database issues:**
 - Delete `backend/portal.db` to reset the database
 - Restart the backend server to recreate tables
-
-## 📝 License
-
-This project is open source and available under the MIT License.
-
-## 🤝 Contributing
-
-Contributions are welcome! Feel free to open issues or submit pull requests.
-
----
-
-Built with ❤️ using Vue.js, Express, SQLite, and Tailwind CSS
