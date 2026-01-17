@@ -1,0 +1,20 @@
+{
+  "users": [
+    {
+      "id": 1768671774215,
+      "username": "user",
+      "password": "$2b$10$zUrpjccPMN50x//NTGHtye4iZeML8ZCWb76sOjxC5Clqa8s119EdG",
+      "role": "user"
+    }
+  ],
+  "news": [
+    {
+      "id": 1768671876581,
+      "title": " Test",
+      "body": "This is a test post.",
+      "author_id": 1768671774215,
+      "author_name": "user",
+      "comments": []
+    }
+  ]
+}
