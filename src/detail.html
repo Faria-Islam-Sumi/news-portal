@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>News Detail</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="news.html">← Back to News</a>
+            <div id="nav-user" class="text-white"></div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- News Content -->
+        <div class="card shadow-sm mb-5">
+            <div class="card-body">
+                <h1 id="news-title" class="display-5">Loading...</h1>
+                <p id="news-author" class="text-muted fst-italic"></p>
+                <hr>
+                <p id="news-body" class="fs-5"></p>
+            </div>
+        </div>
+
+        <!-- Comments Section -->
+        <div class="row">
+            <div class="col-md-8">
+                <h3>Comments</h3>
+                <div id="comments-list" class="list-group mb-4">
+                    <!-- Comments go here -->
+                </div>
+
+                <!-- Add Comment Form -->
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h5>Leave a comment</h5>
+                        <form onsubmit="addComment(event)">
+                            <div class="mb-3">
+                                <textarea id="comment-text" class="form-control" rows="3" placeholder="Write something..." required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Post Comment</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <br><br>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        requireAuth();
+        updateNavbar();
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const newsId = urlParams.get('id');
+        let currentNewsItem = null; // Store fetched item
+
+        async function loadDetail() {
+            // Fetch News
+            const res = await apiFetch(`/news/${newsId}`);
+            if(!res.ok) return alert("News not found");
+            currentNewsItem = await res.json();
+
+            // Fetch Author Name
+            const userRes = await apiFetch(`/users/${currentNewsItem.author_id}`);
+            const author = await userRes.json();
+
+            // Render News
+            document.getElementById('news-title').textContent = currentNewsItem.title;
+            document.getElementById('news-author').textContent = `By ${author.name}`;
+            document.getElementById('news-body').textContent = currentNewsItem.body;
+
+            renderComments();
+        }
+
+        async function renderComments() {
+            const list = document.getElementById('comments-list');
+            list.innerHTML = "";
+
+            if(currentNewsItem.comments.length === 0) {
+                list.innerHTML = "<div class='p-3 text-muted'>No comments yet. Be the first!</div>";
+                return;
+            }
+
+            // Fetch all users to resolve comment names (Optimization: could cache this)
+            const usersRes = await apiFetch('/users');
+            const allUsers = await usersRes.json();
+            const getName = (id) => allUsers.find(u => u.id == id)?.name || "Unknown";
+
+            currentNewsItem.comments.forEach(c => {
+                const item = document.createElement('div');
+                item.className = "list-group-item";
+                item.innerHTML = `
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1 text-primary">${getName(c.user_id)}</h6>
+                        <small class="text-muted">${new Date(c.timestamp).toLocaleDateString()}</small>
+                    </div>
+                    <p class="mb-1">${c.text}</p>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        async function addComment(e) {
+            e.preventDefault();
+            const text = document.getElementById('comment-text').value;
+            const currentUser = getCurrentUser();
+
+            const newComment = {
+                id: Date.now(),
+                text: text,
+                user_id: parseInt(currentUser.id),
+                timestamp: new Date().toISOString()
+            };
+
+            // Add to existing array locally first
+            const updatedComments = [...currentNewsItem.comments, newComment];
+
+            // Send full array to backend
+            const res = await apiFetch(`/news/${newsId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ comments: updatedComments })
+            });
+
+            if(res.ok) {
+                document.getElementById('comment-text').value = ""; // Clear box
+                currentNewsItem.comments = updatedComments; // Update local state
+                renderComments(); // Re-render list
+            } else {
+                alert("Failed to add comment");
+            }
+        }
+
+        loadDetail();
+    </script>
+</body>
+</html>
